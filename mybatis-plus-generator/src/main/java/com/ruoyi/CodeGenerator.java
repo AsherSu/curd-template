@@ -53,19 +53,23 @@ public class CodeGenerator {
     private static String DEFAULT_PARENT_PACKAGE;
 
     public static String getDbDriver() {
-        return DB_DRIVER;
+        DbConnectionInfo active = ConnectionRepository.getActive().orElse(null);
+        return active != null ? active.getDriverClassName() : DB_DRIVER;
     }
 
     public static String getDbUrl() {
-        return DB_URL;
+        DbConnectionInfo active = ConnectionRepository.getActive().orElse(null);
+        return active != null ? active.getUrl() : DB_URL;
     }
 
     public static String getDbUsername() {
-        return DB_USERNAME;
+        DbConnectionInfo active = ConnectionRepository.getActive().orElse(null);
+        return active != null ? active.getUsername() : DB_USERNAME;
     }
 
     public static String getDbPassword() {
-        return DB_PASSWORD;
+        DbConnectionInfo active = ConnectionRepository.getActive().orElse(null);
+        return active != null ? active.getPassword() : DB_PASSWORD;
     }
 
     public static String getOutputDir() {
@@ -154,7 +158,7 @@ public class CodeGenerator {
      */
     private static void generateCodeInteractive(Scanner scanner) {
         System.out.println("\n===== 代码生成 =====");
-        System.out.println("数据库URL: " + DB_URL);
+        System.out.println("数据库URL: " + getDbUrl());
         System.out.println("代码输出目录: " + OUTPUT_DIR);
         System.out.println("默认包名: " + DEFAULT_PARENT_PACKAGE);
         System.out.println();
@@ -206,7 +210,7 @@ public class CodeGenerator {
         record.setModuleName(moduleName);
         record.setParentPackage(parentPackage);
         record.setEnableController(enableController);
-        record.setDbUrl(DB_URL);
+        record.setDbUrl(getDbUrl());
         record.setStatus("PROCESSING");
 
         System.out.println("\n开始生成代码...");
@@ -489,12 +493,12 @@ public class CodeGenerator {
         Connection conn = null;
         try {
             // 加载MySQL驱动
-            Class.forName(DB_DRIVER);
-            conn = DriverManager.getConnection(DB_URL, DB_USERNAME, DB_PASSWORD);
+            Class.forName(getDbDriver());
+            conn = DriverManager.getConnection(getDbUrl(), getDbUsername(), getDbPassword());
             DatabaseMetaData metaData = conn.getMetaData();
 
             // 从URL中提取数据库名
-            String dbName = extractDatabaseName(DB_URL);
+            String dbName = extractDatabaseName(getDbUrl());
             
             System.out.println("正在连接数据库并获取表列表...");
             
@@ -585,7 +589,7 @@ public class CodeGenerator {
     public static void generateCode(String[] tableNames, String parentPackage, 
                                    String moduleName, boolean enableController, GenerationRecord record) {
         // 构建数据源配置
-        DataSourceConfig.Builder dataSourceConfigBuilder = new DataSourceConfig.Builder(DB_URL, DB_USERNAME, DB_PASSWORD);
+        DataSourceConfig.Builder dataSourceConfigBuilder = new DataSourceConfig.Builder(getDbUrl(), getDbUsername(), getDbPassword());
         
         // 设置Mapper XML文件输出路径（默认）
         String mapperXmlPath = System.getProperty("user.dir") + "/src/main/resources/mapper/" + moduleName;
@@ -681,7 +685,7 @@ public class CodeGenerator {
                                     String moduleName, boolean enableController,
                                     GenerationRecord record, GenerationPathConfig customPaths) {
         // 构建数据源配置
-        DataSourceConfig.Builder dataSourceConfigBuilder = new DataSourceConfig.Builder(DB_URL, DB_USERNAME, DB_PASSWORD);
+        DataSourceConfig.Builder dataSourceConfigBuilder = new DataSourceConfig.Builder(getDbUrl(), getDbUsername(), getDbPassword());
 
         // 计算实际使用的目录（若未提供则回落到默认）
         String defaultBase = OUTPUT_DIR + "/" + parentPackage.replace(".", "/") + "/" + moduleName;
