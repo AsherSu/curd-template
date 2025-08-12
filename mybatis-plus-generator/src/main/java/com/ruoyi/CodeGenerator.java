@@ -228,18 +228,18 @@ public class CodeGenerator {
             GenerationRecordManager.saveRecord(record);
             
             // 询问是否确认生成的代码
-            System.out.print("是否确认保留生成的代码？(y/n, 默认为y): ");
-            String confirm = scanner.nextLine();
-            if (!confirm.isEmpty() && confirm.toLowerCase().startsWith("n")) {
-                System.out.println("正在删除刚刚生成的文件...");
-                deleteGeneratedFiles(parentPackage, moduleName, tableNames, enableController, OUTPUT_DIR, startTime);
-                System.out.println("已删除生成的文件。");
-                record.setStatus("CANCELLED");
-                // 更新记录状态
-                GenerationRecordManager.saveRecord(record);
-            } else {
-                System.out.println("代码已保留。");
-            }
+                            System.out.print("是否确认保留生成的代码？(y/n, 默认为y): ");
+                String confirm = scanner.nextLine();
+                if (!confirm.isEmpty() && confirm.toLowerCase().startsWith("n")) {
+                    System.out.println("正在删除刚刚生成的文件...");
+                    new com.ruoyi.core.RecordService().deleteFilesOfRecord(record);
+                    System.out.println("已删除生成的文件。");
+                    record.setStatus("CANCELLED");
+                    // 更新记录状态
+                    GenerationRecordManager.saveRecord(record);
+                } else {
+                    System.out.println("代码已保留。");
+                }
         } catch (Exception e) {
             System.err.println("代码生成失败: " + e.getMessage());
             e.printStackTrace();
@@ -588,94 +588,16 @@ public class CodeGenerator {
      */
     public static void generateCode(String[] tableNames, String parentPackage, 
                                    String moduleName, boolean enableController, GenerationRecord record) {
-        // 构建数据源配置
-        DataSourceConfig.Builder dataSourceConfigBuilder = new DataSourceConfig.Builder(getDbUrl(), getDbUsername(), getDbPassword());
-        
-        // 设置Mapper XML文件输出路径（默认）
-        String mapperXmlPath = System.getProperty("user.dir") + "/src/main/resources/mapper/" + moduleName;
-        
-        // 确保XML输出目录存在
-        try {
-            Path xmlPath = Paths.get(mapperXmlPath);
-            if (!Files.exists(xmlPath)) {
-                Files.createDirectories(xmlPath);
-            }
-        } catch (IOException e) {
-            System.err.println("创建XML目录失败: " + e.getMessage());
-        }
-        
-        // 配置输出路径
-        Map<OutputFile, String> pathInfo = new HashMap<>();
-        pathInfo.put(OutputFile.xml, mapperXmlPath);
-        pathInfo.put(OutputFile.entity, OUTPUT_DIR + "/" + parentPackage.replace(".", "/") + "/" + moduleName + "/entity");
-        pathInfo.put(OutputFile.mapper, OUTPUT_DIR + "/" + parentPackage.replace(".", "/") + "/" + moduleName + "/mapper");
-        pathInfo.put(OutputFile.service, OUTPUT_DIR + "/" + parentPackage.replace(".", "/") + "/" + moduleName + "/service");
-        pathInfo.put(OutputFile.serviceImpl, OUTPUT_DIR + "/" + parentPackage.replace(".", "/") + "/" + moduleName + "/service/impl");
-        if (enableController) {
-            pathInfo.put(OutputFile.controller, OUTPUT_DIR + "/" + parentPackage.replace(".", "/") + "/" + moduleName + "/controller");
-        }
-        
-        // 用于收集生成的文件
-        List<GeneratedFile> generatedFiles = new ArrayList<>();
-        
-        FastAutoGenerator.create(dataSourceConfigBuilder)
-                // 全局配置
-                .globalConfig(builder -> builder
-                        .outputDir(OUTPUT_DIR)
-                        .author("generator")
-                        .disableOpenDir()
-                        .build())
-                
-                // 包配置
-                .packageConfig(builder -> builder
-                        .parent(parentPackage)
-                        .moduleName(moduleName)
-                        .entity("entity")
-                        .service("service")
-                        .serviceImpl("service.impl")
-                        .mapper("mapper")
-                        .xml("mapper.xml")
-                        .controller(enableController ? "controller" : null)
-                        .pathInfo(pathInfo)
-                        .build())
-                
-                // 策略配置
-                .strategyConfig(builder -> builder
-                        .addInclude(tableNames)
-                        .entityBuilder()
-                        .naming(NamingStrategy.underline_to_camel)
-                        .columnNaming(NamingStrategy.underline_to_camel)
-                        .enableLombok()
-                        .logicDeleteColumnName("deleted")
-                        .build()
-                        .controllerBuilder()
-                        .enableRestStyle()
-                        .enableHyphenStyle()
-                        .build()
-                        .serviceBuilder()
-                        .formatServiceFileName("%sService")
-                        .formatServiceImplFileName("%sServiceImpl")
-                        .build()
-                        .mapperBuilder()
-                        .enableMapperAnnotation()
-                        .enableBaseResultMap()
-                        .enableBaseColumnList()
-                        .build())
-                
-                // 注入配置，用于收集生成的文件内容
-                .injectionConfig(builder -> builder.beforeOutputFile((tableInfo, objectMap) -> {
-                    // 这里可以添加处理逻辑，但文件收集在生成后进行
-                }).build())
-                
-                // 使用Velocity模板引擎
-                .templateEngine(new VelocityTemplateEngine())
-                .execute();
-        
-        // 收集生成的文件（默认路径）
-        collectGeneratedFiles(generatedFiles, parentPackage, moduleName, tableNames, enableController);
-        
-        // 将文件列表保存到记录中
-        record.setGeneratedFiles(generatedFiles);
+        com.ruoyi.core.GeneratorService service = new com.ruoyi.core.GeneratorService();
+        com.ruoyi.contracts.GenerateRequest req = new com.ruoyi.contracts.GenerateRequest(
+                tableNames,
+                parentPackage,
+                moduleName,
+                enableController,
+                null,
+                ConnectionRepository.getActive().orElse(null)
+        );
+        service.generate(req, record);
     }
 
     /**
@@ -684,90 +606,16 @@ public class CodeGenerator {
     public static void generateCode(String[] tableNames, String parentPackage,
                                     String moduleName, boolean enableController,
                                     GenerationRecord record, GenerationPathConfig customPaths) {
-        // 构建数据源配置
-        DataSourceConfig.Builder dataSourceConfigBuilder = new DataSourceConfig.Builder(getDbUrl(), getDbUsername(), getDbPassword());
-
-        // 计算实际使用的目录（若未提供则回落到默认）
-        String defaultBase = OUTPUT_DIR + "/" + parentPackage.replace(".", "/") + "/" + moduleName;
-        String entityDir = (customPaths != null && notBlank(customPaths.getEntityDir())) ? customPaths.getEntityDir() : defaultBase + "/entity";
-        String mapperDir = (customPaths != null && notBlank(customPaths.getMapperDir())) ? customPaths.getMapperDir() : defaultBase + "/mapper";
-        String serviceDir = (customPaths != null && notBlank(customPaths.getServiceDir())) ? customPaths.getServiceDir() : defaultBase + "/service";
-        String serviceImplDir = (customPaths != null && notBlank(customPaths.getServiceImplDir())) ? customPaths.getServiceImplDir() : defaultBase + "/service/impl";
-        String controllerDir = (customPaths != null && notBlank(customPaths.getControllerDir())) ? customPaths.getControllerDir() : defaultBase + "/controller";
-        String xmlDir = (customPaths != null && notBlank(customPaths.getXmlDir())) ? customPaths.getXmlDir() : System.getProperty("user.dir") + "/src/main/resources/mapper/" + moduleName;
-
-        // 确保输出目录存在
-        ensureDir(entityDir);
-        ensureDir(mapperDir);
-        ensureDir(serviceDir);
-        ensureDir(serviceImplDir);
-        ensureDir(xmlDir);
-        if (enableController) {
-            ensureDir(controllerDir);
-        }
-
-        // 配置输出路径
-        Map<OutputFile, String> pathInfo = new HashMap<>();
-        pathInfo.put(OutputFile.xml, xmlDir);
-        pathInfo.put(OutputFile.entity, entityDir);
-        pathInfo.put(OutputFile.mapper, mapperDir);
-        pathInfo.put(OutputFile.service, serviceDir);
-        pathInfo.put(OutputFile.serviceImpl, serviceImplDir);
-        if (enableController) {
-            pathInfo.put(OutputFile.controller, controllerDir);
-        }
-
-        // 用于收集生成的文件
-        List<GeneratedFile> generatedFiles = new ArrayList<>();
-
-        FastAutoGenerator.create(dataSourceConfigBuilder)
-                .globalConfig(builder -> builder
-                        .outputDir(OUTPUT_DIR)
-                        .author("generator")
-                        .disableOpenDir()
-                        .build())
-                .packageConfig(builder -> builder
-                        .parent(parentPackage)
-                        .moduleName(moduleName)
-                        .entity("entity")
-                        .service("service")
-                        .serviceImpl("service.impl")
-                        .mapper("mapper")
-                        .xml("mapper.xml")
-                        .controller(enableController ? "controller" : null)
-                        .pathInfo(pathInfo)
-                        .build())
-                .strategyConfig(builder -> builder
-                        .addInclude(tableNames)
-                        .entityBuilder()
-                        .naming(NamingStrategy.underline_to_camel)
-                        .columnNaming(NamingStrategy.underline_to_camel)
-                        .enableLombok()
-                        .logicDeleteColumnName("deleted")
-                        .build()
-                        .controllerBuilder()
-                        .enableRestStyle()
-                        .enableHyphenStyle()
-                        .build()
-                        .serviceBuilder()
-                        .formatServiceFileName("%sService")
-                        .formatServiceImplFileName("%sServiceImpl")
-                        .build()
-                        .mapperBuilder()
-                        .enableMapperAnnotation()
-                        .enableBaseResultMap()
-                        .enableBaseColumnList()
-                        .build())
-                .injectionConfig(builder -> builder.beforeOutputFile((tableInfo, objectMap) -> {
-                }).build())
-                .templateEngine(new VelocityTemplateEngine())
-                .execute();
-
-        // 收集生成的文件（按用户目录）
-        GenerationPathConfig usedPaths = new GenerationPathConfig(entityDir, mapperDir, serviceDir, serviceImplDir, enableController ? controllerDir : null, xmlDir);
-        collectGeneratedFiles(generatedFiles, usedPaths, enableController);
-
-        record.setGeneratedFiles(generatedFiles);
+        com.ruoyi.core.GeneratorService service = new com.ruoyi.core.GeneratorService();
+        com.ruoyi.contracts.GenerateRequest req = new com.ruoyi.contracts.GenerateRequest(
+                tableNames,
+                parentPackage,
+                moduleName,
+                enableController,
+                customPaths,
+                ConnectionRepository.getActive().orElse(null)
+        );
+        service.generate(req, record);
     }
 
     private static boolean notBlank(String s) {

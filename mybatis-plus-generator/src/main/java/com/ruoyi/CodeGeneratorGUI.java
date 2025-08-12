@@ -1,5 +1,7 @@
 package com.ruoyi;
 
+import com.ruoyi.core.GeneratorService;
+import com.ruoyi.contracts.GenerateRequest;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
@@ -443,37 +445,13 @@ public class CodeGeneratorGUI extends JFrame {
      * 获取数据库中的所有表名
      */
     private List<String> getTableList() {
+        // 兼容旧 GUI 工作流，仍支持从配置读取；内部改走 DatabaseService 通用实现
         List<String> tableList = new ArrayList<>();
-        Connection conn = null;
         try {
-            // 加载MySQL驱动
-            Class.forName("com.mysql.cj.jdbc.Driver");
-            conn = DriverManager.getConnection(
-                CodeGenerator.getDbUrl(),
-                CodeGenerator.getDbUsername(),
-                CodeGenerator.getDbPassword()
-            );
-            DatabaseMetaData metaData = conn.getMetaData();
-
-            // 从URL中提取数据库名
             String dbName = CodeGenerator.extractDatabaseName(CodeGenerator.getDbUrl());
-            
-            ResultSet rs = metaData.getTables(dbName, null, null, new String[]{"TABLE"});
-            while (rs.next()) {
-                String tableName = rs.getString("TABLE_NAME");
-                tableList.add(tableName);
-            }
-            rs.close();
+            tableList = DatabaseService.listTables(dbName);
         } catch (Exception e) {
             throw new RuntimeException("获取表列表失败: " + e.getMessage(), e);
-        } finally {
-            if (conn != null) {
-                try {
-                    conn.close();
-                } catch (SQLException e) {
-                    // 忽略关闭连接的异常
-                }
-            }
         }
         return tableList;
     }
@@ -574,7 +552,16 @@ public class CodeGeneratorGUI extends JFrame {
             @Override
             protected Void doInBackground() throws Exception {
                 try {
-                    CodeGenerator.generateCode(tableNames, finalParentPackage, finalModuleName, finalEnableController, record, pathConfig);
+                    GeneratorService service = new GeneratorService();
+                    GenerateRequest req = new GenerateRequest(
+                            tableNames,
+                            finalParentPackage,
+                            finalModuleName,
+                            finalEnableController,
+                            pathConfig,
+                            selectedConn
+                    );
+                    service.generate(req, record);
                     publish("代码生成完成！");
                     record.setStatus("SUCCESS");
                     GenerationRecordManager.saveRecord(record);
@@ -716,8 +703,8 @@ public class CodeGeneratorGUI extends JFrame {
             );
             
             if (option == JOptionPane.YES_OPTION) {
-                // 实现恢复逻辑
-                restoreFiles(record);
+                com.ruoyi.core.RecordService.RestoreReport rpt = new com.ruoyi.core.RecordService().restore(record, true);
+                appendLog(rpt.toString());
             }
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "恢复文件失败: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);

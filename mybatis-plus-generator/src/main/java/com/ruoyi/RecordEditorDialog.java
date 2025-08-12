@@ -235,14 +235,16 @@ public class RecordEditorDialog extends JDialog {
         SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() throws Exception {
-                CodeGenerator.generateCode(
+                com.ruoyi.core.GeneratorService service = new com.ruoyi.core.GeneratorService();
+                com.ruoyi.contracts.GenerateRequest req = new com.ruoyi.contracts.GenerateRequest(
                         record.getTableNames(),
                         record.getParentPackage(),
                         record.getModuleName(),
                         record.isEnableController(),
-                        record,
-                        pathConfig
+                        pathConfig,
+                        null
                 );
+                service.generate(req, record);
                 return null;
             }
 

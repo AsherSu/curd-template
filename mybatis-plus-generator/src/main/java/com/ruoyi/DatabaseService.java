@@ -35,54 +35,73 @@ public class DatabaseService {
     }
 
     public static List<String> listSchemas() {
-        List<String> result = new ArrayList<>();
         try (Connection conn = openActiveConnection()) {
-            DatabaseMetaData meta = conn.getMetaData();
-            try (ResultSet rs = meta.getSchemas()) {
-                while (rs.next()) {
-                    result.add(rs.getString("TABLE_SCHEM"));
-                }
-            }
+            return listSchemas(conn);
         } catch (Exception ignored) {}
-        return result;
+        return new ArrayList<>();
     }
 
     public static List<String> listSchemas(DbConnectionInfo connInfo) {
-        List<String> result = new ArrayList<>();
         try (Connection conn = openConnection(connInfo)) {
-            DatabaseMetaData meta = conn.getMetaData();
-            try (ResultSet rs = meta.getSchemas()) {
+            return listSchemas(conn);
+        } catch (Exception ignored) {}
+        return new ArrayList<>();
+    }
+
+    private static List<String> listSchemas(Connection conn) throws Exception {
+        List<String> result = new ArrayList<>();
+        DatabaseMetaData meta = conn.getMetaData();
+        // 优先用 getSchemas
+        try (ResultSet rs = meta.getSchemas()) {
+            while (rs.next()) {
+                String schema = safeGet(rs, "TABLE_SCHEM");
+                if (schema != null && !schema.isEmpty()) result.add(schema);
+            }
+        }
+        // 对于部分驱动/模式，可能需要补充 catalogs
+        if (result.isEmpty()) {
+            try (ResultSet rs = meta.getCatalogs()) {
                 while (rs.next()) {
-                    result.add(rs.getString("TABLE_SCHEM"));
+                    String catalog = safeGet(rs, "TABLE_CAT");
+                    if (catalog != null && !catalog.isEmpty()) result.add(catalog);
                 }
             }
-        } catch (Exception ignored) {}
+        }
         return result;
     }
 
     public static List<String> listTables(String schemaOrDb) {
-        List<String> tables = new ArrayList<>();
         try (Connection conn = openActiveConnection()) {
-            DatabaseMetaData meta = conn.getMetaData();
-            try (ResultSet rs = meta.getTables(schemaOrDb, null, null, new String[]{"TABLE"})) {
-                while (rs.next()) {
-                    tables.add(rs.getString("TABLE_NAME"));
-                }
-            }
+            return listTables(conn, schemaOrDb);
         } catch (Exception ignored) {}
-        return tables;
+        return new ArrayList<>();
     }
 
     public static List<String> listTables(DbConnectionInfo connInfo, String schemaOrDb) {
-        List<String> tables = new ArrayList<>();
         try (Connection conn = openConnection(connInfo)) {
-            DatabaseMetaData meta = conn.getMetaData();
-            try (ResultSet rs = meta.getTables(schemaOrDb, null, null, new String[]{"TABLE"})) {
-                while (rs.next()) {
-                    tables.add(rs.getString("TABLE_NAME"));
-                }
-            }
+            return listTables(conn, schemaOrDb);
         } catch (Exception ignored) {}
+        return new ArrayList<>();
+    }
+
+    private static List<String> listTables(Connection conn, String schemaOrDb) throws Exception {
+        List<String> tables = new ArrayList<>();
+        DatabaseMetaData meta = conn.getMetaData();
+        // 对于不同驱动，catalog/schema 的位置不同。尝试两种方式。
+        // 方式一：schema 参数
+        try (ResultSet rs = meta.getTables(null, schemaOrDb, null, new String[]{"TABLE"})) {
+            while (rs.next()) tables.add(safeGet(rs, "TABLE_NAME"));
+        }
+        if (tables.isEmpty()) {
+            // 方式二：catalog 参数
+            try (ResultSet rs = meta.getTables(schemaOrDb, null, null, new String[]{"TABLE"})) {
+                while (rs.next()) tables.add(safeGet(rs, "TABLE_NAME"));
+            }
+        }
         return tables;
+    }
+
+    private static String safeGet(ResultSet rs, String col) {
+        try { return rs.getString(col); } catch (Exception e) { return null; }
     }
 } 
